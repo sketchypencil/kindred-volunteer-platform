@@ -1,4 +1,4 @@
-# ReachForward - Volunteer Sign-Up & Operations Platform
+# Kindred - Volunteer Sign-Up & Operations Platform
 
 A comprehensive, role-based volunteer management and shift scheduling application built with **React 19**, **TypeScript**, and **Vite**.
 
