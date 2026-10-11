@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import axios from 'axios';
 import type {
   User,
   VolunteerEvent,
@@ -127,14 +128,14 @@ export const VolunteerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const fetchBackendData = async () => {
       try {
         const [eventsRes, signupsRes, announcementsRes] = await Promise.all([
-          fetch(`${API_BASE}/events`).then((res) => res.json()),
-          fetch(`${API_BASE}/signups`).then((res) => res.json()),
-          fetch(`${API_BASE}/announcements`).then((res) => res.json()),
+          axios.get(`${API_BASE}/events`),
+          axios.get(`${API_BASE}/signups`),
+          axios.get(`${API_BASE}/announcements`),
         ]);
 
-        if (Array.isArray(eventsRes)) setEvents(eventsRes);
-        if (Array.isArray(signupsRes)) setSignups(signupsRes);
-        if (Array.isArray(announcementsRes)) setAnnouncements(announcementsRes);
+        if (Array.isArray(eventsRes.data)) setEvents(eventsRes.data);
+        if (Array.isArray(signupsRes.data)) setSignups(signupsRes.data);
+        if (Array.isArray(announcementsRes.data)) setAnnouncements(announcementsRes.data);
       } catch (error) {
         console.warn('Backend unavailable, falling back to cached local storage data.');
       }
@@ -142,6 +143,7 @@ export const VolunteerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     fetchBackendData();
   }, []);
+
 
   // Sync state changes to LocalStorage
   useEffect(() => {
@@ -181,24 +183,17 @@ export const VolunteerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const registerUser = async (data: any) => {
     try {
-      const response = await fetch(`${API_BASE}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        // The server sends { error: '...' } on failure
-        throw new Error(result.error || result.message || 'Registration failed');
-      }
+      const response = await axios.post(`${API_BASE}/auth/register`, data);
+      const result = response.data;
 
       setCurrentUser(result.user);
       addToast('Welcome to Kindred!', `Account created for ${result.user.name}`, 'success');
       return { success: true, user: result.user as User };
     } catch (err: any) {
       const message =
-        err instanceof TypeError ? 'Cannot reach the server. Please try again.' : err.message;
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        (axios.isAxiosError(err) ? 'Cannot reach the server. Please try again.' : err.message);
       addToast('Registration Error', message, 'alert');
       return { success: false, message };
     }
@@ -206,17 +201,8 @@ export const VolunteerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const loginUser = async (email: string, password: string) => {
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        // The server sends { error: '...' } on failure
-        throw new Error(result.error || result.message || 'Invalid login credentials');
-      }
+      const response = await axios.post(`${API_BASE}/auth/login`, { email, password });
+      const result = response.data;
 
       // result.user comes straight from the database, including the real role
       setCurrentUser(result.user);
@@ -224,7 +210,9 @@ export const VolunteerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: true, user: result.user as User };
     } catch (err: any) {
       const message =
-        err instanceof TypeError ? 'Cannot reach the server. Please try again.' : err.message;
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        (axios.isAxiosError(err) ? 'Cannot reach the server. Please try again.' : err.message);
       addToast('Login Failed', message, 'alert');
       return { success: false, message };
     }
@@ -319,33 +307,27 @@ export const VolunteerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let finalSignup: Signup = fallbackSignup;
 
     try {
-      const response = await fetch(`${API_BASE}/signups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          shiftId,
-          roleId,
-          notes,
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userEmail: currentUser.email,
-          status: computedStatus,
-        }),
+      const response = await axios.post(`${API_BASE}/signups`, {
+        eventId,
+        shiftId,
+        roleId,
+        notes,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        status: computedStatus,
       });
 
-      if (response.ok) {
-        const resData = await response.json();
-        // The server replies with { signupId, status, waitlistPosition, qrCodeToken }
-        if (resData && (resData.signupId || resData.id)) {
-          finalSignup = {
-            ...fallbackSignup,
-            id: String(resData.signupId || resData.id),
-            status: resData.status || computedStatus,
-            qrCodeToken: resData.qrCodeToken || fallbackSignup.qrCodeToken,
-            waitlistPosition: resData.waitlistPosition ?? fallbackSignup.waitlistPosition,
-          };
-        }
+      const resData = response.data;
+      // The server replies with { signupId, status, waitlistPosition, qrCodeToken }
+      if (resData && (resData.signupId || resData.id)) {
+        finalSignup = {
+          ...fallbackSignup,
+          id: String(resData.signupId || resData.id),
+          status: resData.status || computedStatus,
+          qrCodeToken: resData.qrCodeToken || fallbackSignup.qrCodeToken,
+          waitlistPosition: resData.waitlistPosition ?? fallbackSignup.waitlistPosition,
+        };
       }
     } catch (err) {
       console.warn('Backend server unavailable. Updating local state.');
